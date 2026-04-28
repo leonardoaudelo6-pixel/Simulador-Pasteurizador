@@ -28,8 +28,11 @@ with st.sidebar.expander("1. SISTEMA DE CALDERA", expanded=True):
     P_b_out = st.number_input("Presion de Vapor [kPa]", value=550.0)
 
 with st.sidebar.expander("2. INTERCAMBIADOR DE CALOR (HX)", expanded=True):
-    U_manual = st.number_input("Coeficiente Global U [W/m2-K]", value=1500.0)
+    # Inputs de diseño solicitados
+    U_diseno = st.number_input("Coeficiente Global U [W/m2-K]", value=1500.0)
     N_placas = st.number_input("Numero de Placas", value=200)
+    
+    st.markdown("---")
     T_I_steam_IN = st.number_input("Temp. Vapor Entrada HX [C]", value=151.0)
     P_I_steam_IN = st.number_input("Presion Vapor Entrada [kPa]", value=500.0)
     T_I_cond_OUT = st.number_input("Temp. Condensado Salida [C]", value=82.0)
@@ -68,7 +71,7 @@ try:
     m_I_water_OUT = Q_vapor_cedido / (h_I_water_OUT - h_I_water_IN)
     Q_agua_ganado_HX = m_I_water_OUT * (h_I_water_OUT - h_I_water_IN)
 
-    # Eficiencia HX
+    # Eficiencia/Efectividad HX
     cp_w_prom = cp_f((T_I_water_IN + T_I_water_OUT)/2, P_I_water_OUT)
     C_min = m_I_water_OUT * cp_w_prom
     Q_max = C_min * (T_I_steam_IN - T_I_water_IN)
@@ -78,7 +81,7 @@ try:
     m_total_prod = m_vidrio + m_cerveza
     cp_prom_prod = (m_vidrio * cp_vidrio + m_cerveza * cp_cerveza) / m_total_prod
     
-    # Zona 7-14 (Pasteurizacion)
+    # Pasteurizacion
     m_PS_714 = (m_I_water_OUT / 14) * 8
     Q_agua_cedido_PS = m_PS_714 * (h_I_water_OUT - h_liq(60.0, P_I_water_OUT))
     m_botellas_kgs = Q_agua_cedido_PS / (cp_prom_prod * (T_botella_714_OUT - T_botella_16_OUT))
@@ -90,43 +93,45 @@ try:
     st.title("Monitor Tecnico de Planta")
     st.divider()
 
-    col_main, col_side = st.columns([2, 1])
+    c_main, c_side = st.columns([2, 1])
 
-    with col_main:
+    with c_main:
         try:
             st.image("diagrama.png", use_container_width=True)
         except:
-            st.warning("Diagrama no encontrado.")
+            st.warning("Diagrama no encontrado en el repositorio.")
         
-        # Tabla de Calores
+        st.subheader("Resumen de Flujos Masicos")
+        tabla_flujos = {
+            "Corriente": ["Combustible", "Vapor de Agua", "Agua de Proceso", "Producto (Masa Total)"],
+            "Flujo [kg/s]": [f"{m_comb:.4f}", f"{m_I_steam_IN:.4f}", f"{m_I_water_OUT:.4f}", f"{m_botellas_kgs:.4f}"]
+        }
+        st.table(tabla_flujos)
+
         st.subheader("Balances de Energia")
         tabla_calores = {
             "Componente": ["Caldera", "Intercambiador (HX)", "Pasteurizador (Zona 7-14)"],
             "Calor Cedido [kW]": [f"{m_comb*LHV:.2f}", f"{Q_vapor_cedido:.2f}", f"{Q_agua_cedido_PS:.2f}"],
-            "Calor Ganado [kW]": [f"{Q_caldera_ganado:.2f}", f"{Q_agua_ganado_HX:.2f}", f"{Q_botellas_ganado:.2f}"],
-            "Eficiencia/Efectividad": [f"{n_b*100:.1f}%", f"{efectividad_hx*100:.1f}%", "---"]
+            "Calor Ganado [kW]": [f"{Q_caldera_ganado:.2f}", f"{Q_agua_ganado_HX:.2f}", f"{Q_botellas_ganado:.2f}"]
         }
         st.table(tabla_calores)
 
-        # Tabla de Flujos Masicos (Solicitada)
-        st.subheader("Resumen de Flujos Masicos")
-        tabla_flujos = {
-            "Corriente": ["Combustible (Caldera)", "Vapor de Agua (Caldera/HX)", "Agua de Proceso (Duchas)", "Masa de Producto (Botellas)"],
-            "Flujo Masico [kg/s]": [f"{m_comb:.4f}", f"{m_I_steam_IN:.4f}", f"{m_I_water_OUT:.4f}", f"{m_botellas_kgs:.4f}"]
-        }
-        st.table(tabla_flujos)
-
-    with col_side:
-        st.subheader("Resultados Globales")
+    with c_side:
+        st.subheader("Indicadores Clave")
         st.metric("Produccion", f"{int(produccion_dia):,} Botellas/Dia")
-        st.metric("U Aplicada", f"{U_manual:.1f} W/m2-K")
-        st.metric("Placas Instaladas", f"{int(N_placas)}")
+        st.metric("Eficiencia HX", f"{efectividad_hx*100:.2f} %")
+        st.metric("U de Diseno", f"{U_diseno:.1f} W/m2-K")
+        st.metric("Placas", f"{int(N_placas)}")
         
         st.divider()
-        st.subheader("Parametros Adicionales")
-        st.write(f"**Efectividad HX:** {efectividad_hx*100:.2f}%")
-        st.write(f"**Cp Promedio Producto:** {cp_prom_prod:.3f} kJ/kg-K")
-        st.write(f"**Area Estimada (U):** {(Q_agua_ganado_HX*1000)/(U_manual*30):.2f} m2")
+        st.subheader("Detalles Adicionales")
+        st.write(f"**Agua Proceso:** {m_I_water_OUT:.3f} kg/s")
+        st.write(f"**Vapor en HX:** {m_I_steam_IN:.3f} kg/s")
+        st.write(f"**Cp Producto:** {cp_prom_prod:.3f} kJ/kg-K")
+        # Calculo de Area basado en la U introducida
+        LMTD = 30 # Valor simplificado para visualizacion
+        Area_req = (Q_agua_ganado_HX * 1000) / (U_diseno * LMTD)
+        st.write(f"**Area Requerida (est.):** {Area_req:.2f} m2")
 
 except Exception as e:
     st.error(f"Error en los calculos: {e}")
