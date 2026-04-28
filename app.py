@@ -4,110 +4,129 @@ import numpy as np
 from PIL import Image
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Simulador Pasteurizador", layout="wide")
+st.set_page_config(page_title="Simulador Térmico Pasteurizador", layout="wide")
 
-# --- FUNCIONES DE APOYO (TRADUCCIÓN EES -> PYTHON) ---
-def h_water(T_c, P_kpa):
+# --- FUNCIONES TERMODINÁMICAS ---
+def h_agua(T_c, P_kpa):
     return PropsSI('H', 'T', T_c + 273.15, 'P', P_kpa * 1000, 'Water') / 1000
 
-def h_steam(T_c, Q):
+def h_vapor(T_c, Q):
     return PropsSI('H', 'T', T_c + 273.15, 'Q', Q, 'Water') / 1000
 
-def cp_water(T_c, P_kpa):
+def cp_agua(T_c, P_kpa):
     return PropsSI('C', 'T', T_c + 273.15, 'P', P_kpa * 1000, 'Water') / 1000
 
-# --- INTERFAZ DE USUARIO (SIDEBAR) ---
-st.sidebar.header("🛠️ Parámetros de la Caldera")
-# Ahora son cuadros para introducir el valor exacto
-T_b_in = st.sidebar.number_input("Temp. Entrada Caldera [C]", value=94.0)
-T_b_out = st.sidebar.number_input("Temp. Salida Vapor [C]", value=162.0)
-P_b_out = st.sidebar.number_input("Presión Caldera [kPa]", value=550.0)
-m_b_in = st.sidebar.number_input("Flujo Agua Entrada [kg/s]", value=1.472)
-n_b = st.sidebar.number_input("Eficiencia Caldera (0-1)", value=0.96)
+# --- BARRA LATERAL (INPUTS DETALLADOS) ---
+st.sidebar.title("🎮 Panel de Control Técnico")
 
-st.sidebar.header("⚙️ Intercambiador de Calor")
-N_placas = st.sidebar.number_input("Número de Placas", value=200)
-T_I_steam_IN = st.sidebar.number_input("Temp. Vapor Entrada HX [C]", value=151.0)
-T_I_water_IN = st.sidebar.number_input("Temp. Agua Fría Entrada [C]", value=52.0)
+# SECCIÓN 1: CALDERA
+with st.sidebar.expander("🔥 1. SISTEMA DE CALDERA (Vapor)", expanded=True):
+    T_b_in = st.number_input("Temp. Entrada Agua Alimentación [C]", value=94.0, help="Agua líquida que entra a la caldera.")
+    T_b_out = st.number_input("Temp. Salida Vapor Generado [C]", value=162.0, help="Vapor que sale hacia la planta.")
+    P_b_out = st.number_input("Presión de Operación [kPa]", value=550.0)
+    m_b_in = st.number_input("Flujo de Alimentación [kg/s]", value=1.472)
+    n_b = st.number_input("Eficiencia Térmica (0.0 - 1.0)", value=0.96)
+    LHV = st.number_input("Poder Calorífico Combustible [kJ/kg]", value=34300.0)
 
-st.sidebar.header("🍺 Parámetros de Producción")
-m_cerveza = st.sidebar.number_input("Masa Cerveza [kg]", value=1.2)
-m_vidrio = st.sidebar.number_input("Masa Vidrio [kg]", value=0.35)
-T_botella_IN = st.sidebar.number_input("Temp. Inicial Botella [C]", value=4.0)
+# SECCIÓN 2: INTERCAMBIADOR DE PLACAS
+with st.sidebar.expander("⚙️ 2. INTERCAMBIADOR (Transferencia)", expanded=True):
+    st.markdown("**Lado Vapor (Calentamiento)**")
+    T_I_steam_IN = st.number_input("Temp. Vapor Entrada HX [C]", value=151.0)
+    P_I_steam_IN = st.number_input("Presión Vapor Entrada HX [kPa]", value=500.0)
+    T_I_cond_OUT = st.number_input("Temp. Condensado Salida [C]", value=82.0)
+    
+    st.markdown("**Lado Agua de Proceso (Calentamiento)**")
+    T_I_water_IN = st.number_input("Temp. Agua Fría Entrada [C]", value=52.0)
+    T_I_water_OUT = st.number_input("Temp. Agua Caliente Salida [C]", value=86.0)
+    P_I_water_OUT = st.number_input("Presión Agua Proceso [kPa]", value=80.0)
 
-# Producto
-m_vidrio = 0.35
-m_cerveza = 1.2
-cp_vidrio = 0.86
-cp_cerveza = 3.85
-m_una_botella = m_vidrio + m_cerveza
-cp_prom_prod = (m_vidrio * cp_vidrio + m_cerveza * cp_cerveza) / m_una_botella
+# SECCIÓN 3: GEOMETRÍA DEL INTERCAMBIADOR (MÉTODO NTU)
+with st.sidebar.expander("📐 3. GEOMETRÍA Y DISEÑO HX", expanded=False):
+    N_placas = st.number_input("Número Total de Placas", value=200)
+    b_c = st.number_input("Espesor de Canal (b_c) [m]", value=0.004, format="%.4f")
+    w_c = st.number_input("Ancho de Placa (w_c) [m]", value=0.363, format="%.3f")
+    miu = st.number_input("Viscosidad Dinámica [Pa-s]", value=4.04e-7, format="%.2e")
+    k_w = st.number_input("Conductividad Térmica [W/m-K]", value=0.663)
 
-# --- CÁLCULOS TRAS CORTINAS ---
+# SECCIÓN 4: PRODUCTO Y PASTEURIZACIÓN
+with st.sidebar.expander("🍺 4. PARÁMETROS DEL PRODUCTO", expanded=True):
+    m_vidrio = st.number_input("Masa Botella Vacía [kg]", value=0.35)
+    m_cerveza = st.number_input("Masa Líquido (Cerveza) [kg]", value=1.2)
+    T_botella_IN = st.number_input("Temp. Inicial Producto [C]", value=4.0)
+    T_botella_16_OUT = st.number_input("Temp. Salida Etapa 1 [C]", value=40.0)
+    T_botella_714_OUT = st.number_input("Temp. Salida Etapa 2 [C]", value=64.0)
+    T_botella_1520_OUT = st.number_input("Temp. Salida Final [C]", value=22.0)
+
+# --- CÁLCULOS ---
 try:
-    # 1. Caldera
-    h_b_in = h_water(T_b_in, 550)
-    h_b_out = h_steam(T_b_out, 1)
-    # Q_boiler = m_b_in * (h_b_out - h_b_in) / n_b (Si necesitaras calcular combustible)
-
-    # 2. Intercambiador
-    m_i_steam_in = m_b_in * 0.95
-    h_s_in = h_steam(151, 1)
-    h_cond = h_water(82, 500)
+    # Propiedades
+    H_b_in = h_agua(T_b_in, P_b_out)
+    H_b_out = h_vapor(T_b_out, 1.0)
     
-    h_i_w_in = h_water(52, 80)
-    h_i_w_out = h_water(86, 80)
+    # Intercambiador
+    m_I_steam_IN = m_b_in * 0.95
+    h_s_in = h_vapor(T_I_steam_IN, 1.0)
+    h_cond = h_agua(T_I_cond_OUT, P_I_steam_IN)
     
-    # Despeje de m_I_water_OUT de tu balance: m_w * dh_w = m_s * dh_s
-    m_i_water_out = (m_i_steam_in * (h_s_in - h_cond)) / (h_i_w_out - h_i_w_in)
-    q_intercambiador = m_i_water_out * (h_i_w_out - h_i_w_in)
-
-    # 3. Zonas Pasteurizador (Balance Zona 7-14 para sacar m_botellas)
-    m_ps_714 = (m_i_water_out / 14) * 8
-    h_ps_714_out = h_water(60, 80)
-    q_ps_cedido_714 = m_ps_714 * (h_i_w_out - h_ps_714_out)
+    h_I_water_IN = h_agua(T_I_water_IN, P_I_water_OUT)
+    h_I_water_OUT = h_agua(T_I_water_OUT, P_I_water_OUT)
     
-    # Despeje m_botellas: Q = m * cp * dT
-    m_botellas_kgs = q_ps_cedido_714 / (cp_prom_prod * (64 - 40))
+    # Balance de energía en HX
+    # m_steam * (h_in - h_out) = m_water * (h_out - h_in)
+    m_I_water_OUT = (m_I_steam_IN * (h_s_in - h_cond)) / (h_I_water_OUT - h_I_water_IN)
+    Q_intercambiador = m_I_water_OUT * (h_I_water_OUT - h_I_water_IN)
+
+    # Producto
+    m_una_botella = m_vidrio + m_cerveza
+    cp_prom_prod = (m_vidrio * 0.86 + m_cerveza * 3.85) / m_una_botella
     
-    # 4. Producción
-    botellas_dia = (m_botellas_kgs * 3600 * 24) / m_una_botella
-
-    # 5. NTU Intercambiador
-    cp_w_prom = cp_water(69, 80)
-    c_min = m_i_water_out * cp_w_prom
-    q_max = c_min * (151 - 52)
-    eff = q_intercambiador / q_max
-    ntu = -np.log(1 - eff)
-
-    # --- MOSTRAR RESULTADOS ---
-    st.title("📊 Monitor de Pasteurización Digital")
+    # Masa de botellas basada en Etapa 2 (Zona 7-14)
+    m_PS_714 = (m_I_water_OUT / 14) * 8
+    h_PS_714_out = h_agua(60.0, P_I_water_OUT)
+    Q_PS_cedido_714 = m_PS_714 * (h_I_water_OUT - h_PS_714_out)
+    m_botellas_kgs = Q_PS_cedido_714 / (cp_prom_prod * (T_botella_714_OUT - T_botella_16_OUT))
     
-    col1, col2 = st.columns([3, 1])
+    produccion_dia = (m_botellas_kgs * 3600 * 24) / m_una_botella
 
-    with col1:
-        st.subheader("Esquema de Planta")
-        # Aquí cargarías tu imagen. Si no está en el repo, muestra un placeholder.
+    # --- DISEÑO ---
+    st.title("🛡️ Sistema de Monitoreo Térmico: Pasteurización Batch")
+    st.markdown(f"**Ingeniero a cargo:** Armangoat / Leo")
+    st.divider()
+
+    c_img, c_stats = st.columns([2, 1])
+
+    with c_img:
         try:
-            img = Image.open("diagrama.png")
-            st.image(img, caption="Diagrama de Flujo de Proceso", use_container_width=True)
+            st.image("diagrama.png", use_container_width=True)
         except:
-            st.warning("⚠️ Sube tu imagen como 'diagrama.png' para verla aquí.")
+            st.warning("Diagrama no encontrado. Súbelo como 'diagrama.png'")
+        
+        st.subheader("📡 Datos en Tiempo Real")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Flujo Agua de Proceso", f"{m_I_water_OUT:.3f} kg/s")
+        m2.metric("Q Intercambiador", f"{Q_intercambiador:.2f} kW")
+        m3.metric("Flujo Vapor HX", f"{m_I_steam_IN:.3f} kg/s")
 
-    with col2:
-        st.metric("Producción Diaria", f"{int(botellas_dia):,} botellas")
-        st.metric("Flujo Agua Caliente", f"{m_i_water_out:.2f} kg/s")
-        st.metric("Efectividad HX", f"{eff*100:.1f} %")
-        st.metric("NTU Calculado", f"{ntu:.3f}")
+    with c_stats:
+        st.subheader("📦 Producción Estimada")
+        st.success(f"**{int(produccion_dia):,}** Botellas / 24h")
+        
+        st.divider()
+        st.subheader("🔬 Análisis de Ingeniería")
+        st.write(f"**Cp Promedio Producto:** {cp_prom_prod:.3f} kJ/kg-K")
+        st.write(f"**Masa de Producción:** {m_botellas_kgs:.2f} kg/s")
+        
+        # Cálculo de combustible aproximado
+        m_comb = (m_b_in * (H_b_out - H_b_in)) / (n_b * LHV)
+        st.write(f"**Consumo Combustible:** {m_comb:.4f} kg/s")
 
-    # Tabla de estados por zona
-    st.subheader("📋 Estado de Zonas")
-    data = {
-        "Zona": ["1-6 (Pre-Cal)", "7-14 (Pasteur)", "15-20 (Enfriamiento)"],
-        "Temp. Botella Out [C]": [40, 64, 22],
-        "Carga Térmica [kW]": [m_botellas_kgs*cp_prom_prod*(40-4), q_ps_cedido_714, m_botellas_kgs*cp_prom_prod*(22-64)]
-    }
-    st.table(data)
+    st.divider()
+    st.subheader("📝 Resumen de Operación por Zona")
+    st.table({
+        "Zona": ["1-6 (Pre-cal)", "7-14 (Pasteur)", "15-20 (Pre-enf)"],
+        "Estado": ["Calentando", "Sostenimiento", "Enfriamiento"],
+        "Temp. Objetivo [C]": [T_botella_16_OUT, T_botella_714_OUT, T_botella_1520_OUT]
+    })
 
 except Exception as e:
-    st.error(f"Error en los cálculos: {e}. Revisa las propiedades del fluido.")
+    st.error(f"Error en el balance: {e}")
