@@ -17,13 +17,23 @@ def cp_water(T_c, P_kpa):
     return PropsSI('C', 'T', T_c + 273.15, 'P', P_kpa * 1000, 'Water') / 1000
 
 # --- INTERFAZ DE USUARIO (SIDEBAR) ---
-st.sidebar.header("🛠️ Parámetros de Entrada")
-
-# Caldera
-T_b_in = st.sidebar.slider("Temp. Entrada Caldera [C]", 50, 100, 94)
-T_b_out = st.sidebar.slider("Temp. Salida Vapor [C]", 140, 180, 162)
+st.sidebar.header("🛠️ Parámetros de la Caldera")
+# Ahora son cuadros para introducir el valor exacto
+T_b_in = st.sidebar.number_input("Temp. Entrada Caldera [C]", value=94.0)
+T_b_out = st.sidebar.number_input("Temp. Salida Vapor [C]", value=162.0)
+P_b_out = st.sidebar.number_input("Presión Caldera [kPa]", value=550.0)
 m_b_in = st.sidebar.number_input("Flujo Agua Entrada [kg/s]", value=1.472)
-n_b = 0.96
+n_b = st.sidebar.number_input("Eficiencia Caldera (0-1)", value=0.96)
+
+st.sidebar.header("⚙️ Intercambiador de Calor")
+N_placas = st.sidebar.number_input("Número de Placas", value=200)
+T_I_steam_IN = st.sidebar.number_input("Temp. Vapor Entrada HX [C]", value=151.0)
+T_I_water_IN = st.sidebar.number_input("Temp. Agua Fría Entrada [C]", value=52.0)
+
+st.sidebar.header("🍺 Parámetros de Producción")
+m_cerveza = st.sidebar.number_input("Masa Cerveza [kg]", value=1.2)
+m_vidrio = st.sidebar.number_input("Masa Vidrio [kg]", value=0.35)
+T_botella_IN = st.sidebar.number_input("Temp. Inicial Botella [C]", value=4.0)
 
 # Producto
 m_vidrio = 0.35
