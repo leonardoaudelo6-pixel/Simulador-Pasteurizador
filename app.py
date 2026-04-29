@@ -55,7 +55,7 @@ try:
     # 2. Intercambiador
     m_I_steam_IN = m_vapor_gen * 0.95
     h_s_in = h_vap(T_I_steam_IN, 1)
-    h_cond = h_liq(82.0, P_I_steam_IN) # Usamos la presion del HX para el condensado
+    h_cond = h_liq(82.0, P_I_steam_IN)
     Q_cedido_HX = m_I_steam_IN * (h_s_in - h_cond)
     
     h_I_w_in = h_liq(T_I_water_IN, P_I_water_OUT)
@@ -67,17 +67,13 @@ try:
     m_una_botella = m_vidrio + m_cerveza
     cp_prom_prod = (m_vidrio * 0.86 + m_cerveza * 3.85) / m_una_botella
 
-    # Etapa 2 (Zona 7-14)
     m_PS_714 = (m_I_water_OUT / 14) * 8
     h_PS_714_out = h_liq(59.0, P_I_water_OUT)
     Q_PS_cedido_714 = m_PS_714 * (h_I_w_out - h_PS_714_out)
     m_botellas_kgs = Q_PS_cedido_714 / (cp_prom_prod * (T_botella_714_OUT - T_botella_16_OUT))
 
-    # Etapa 3 (Mezcla)
     m_PS_1520 = (m_I_water_OUT / 14) * 6
-    # Balance de mezcla para h_PS_mezcla = h a 48 C
     m_PS_16_1520 = (m_PS_1520 * (h_I_w_out - h_liq(48.0, P_I_water_OUT))) / (h_liq(48.0, P_I_water_OUT) - h_liq(36.0, P_I_water_OUT))
-    m_PS_mezcla_1520 = m_PS_1520 + m_PS_16_1520
     
     produccion_dia = (m_botellas_kgs * 3600 * 24) / m_una_botella
 
@@ -107,7 +103,8 @@ try:
         }
         st.table(tabla_t)
 
-    with col_side:
+    # AQUÍ ESTABA EL ERROR, YA ESTÁ CORREGIDO A 'with col_s:'
+    with col_s:
         st.subheader("Resultados Principales")
         st.metric("Produccion Total", f"{int(produccion_dia):,} Botellas/Dia")
         
@@ -120,9 +117,6 @@ try:
         st.write(f"**U Seleccionada:** {U_manual} W/m2-K")
         st.write(f"**Numero de Placas:** {int(N_placas)}")
         st.write(f"**Flujo Combustible:** {m_comb:.4f} kg/s")
-
-except Exception as e:
-    st.error(f"Error en calculos: {e}")
 
 except Exception as e:
     st.error(f"Error en calculos: {e}")
