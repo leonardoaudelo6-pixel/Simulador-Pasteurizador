@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 
 # --- CONFIGURACION DE PAGINA ---
-st.set_page_config(page_title="Simulador Termico v2.0", layout="wide")
+st.set_page_config(page_title="Simulador Tecnico de Pasteurizacion", layout="wide")
 
 # --- FUNCIONES DE PROPIEDADES ---
 def h_liq(T_c, P_kpa):
@@ -37,12 +37,12 @@ with st.sidebar.expander("2. INTERCAMBIADOR (HX)", expanded=True):
 with st.sidebar.expander("3. PRODUCTO Y PROCESO", expanded=True):
     m_vidrio = st.sidebar.number_input("Masa Vidrio [kg]", value=0.35)
     m_cerveza = st.sidebar.number_input("Masa Cerveza [kg]", value=1.2)
-    T_botella_IN = st.sidebar.number_input("Temp. Inicial Producto [C]", value=4.0)
+    T_botella_IN = st.sidebar.number_input("Temp. Entrada Etapa 1 [C]", value=4.0)
     T_botella_16_OUT = st.sidebar.number_input("Temp. Salida Etapa 1 [C]", value=40.0)
     T_botella_714_OUT = st.sidebar.number_input("Temp. Salida Etapa 2 [C]", value=64.0)
     T_botella_1520_OUT = st.sidebar.number_input("Temp. Salida Final [C]", value=22.0)
 
-# --- CALCULOS ACTUALIZADOS ---
+# --- CALCULOS ---
 try:
     # 1. Caldera
     H_b_in = h_liq(T_b_in, P_b_out)
@@ -61,27 +61,19 @@ try:
     m_I_water_OUT = Q_cedido_HX / (h_I_w_out - h_I_w_in)
     Q_ganado_HX = m_I_water_OUT * (h_I_w_out - h_I_w_in)
 
-    # 3. Pasteurizador (Nuevos Balances)
+    # 3. Pasteurizador
     m_una_botella = m_vidrio + m_cerveza
     cp_prom_prod = (m_vidrio * 0.86 + m_cerveza * 3.85) / m_una_botella
 
-    # Etapa 2 (7-14)
     m_PS_714 = (m_I_water_OUT / 14) * 8
-    h_PS_714_out = h_liq(59.0, 80.0) # Nueva T_PS_714_OUT
+    h_PS_714_out = h_liq(59.0, 80.0)
     Q_PS_cedido_714 = m_PS_714 * (h_I_w_out - h_PS_714_out)
-    # Despeje de masa de botellas
     m_botellas_kgs = Q_PS_cedido_714 / (cp_prom_prod * (T_botella_714_OUT - T_botella_16_OUT))
 
-    # Etapa 3 (15-20)
     m_PS_1520 = (m_I_water_OUT / 14) * 6
     m_PS_16_1520 = (m_PS_1520 * (h_I_w_out - h_liq(48.0, 80.0))) / (h_liq(48.0, 80.0) - h_liq(36.0, 80.0))
     m_PS_mezcla_1520 = m_PS_1520 + m_PS_16_1520
-    Q_cedido_E3 = m_PS_mezcla_1520 * (h_liq(48.0, 80.0) - h_liq(33.5, 80.0))
-
-    # Etapa 1 (1-6)
-    Q_cedido_E1 = m_PS_16_1520 * (h_liq(36.0, 80.0) - h_liq(51.5, 80.0))
     
-    # Produccion
     produccion_dia = (m_botellas_kgs * 3600 * 24) / m_una_botella
 
     # --- VISUALIZACION ---
@@ -96,20 +88,19 @@ try:
         except:
             st.warning("Diagrama no encontrado.")
 
-        st.subheader("Balances de Calores")
-        tabla_q = {
-            "Zona": ["Caldera", "Intercambiador HX", "Pasteurizador (E2)", "Pre-enfriamiento (E3)", "Pre-calentamiento (E1)"],
-            "Q Cedido [kW]": [f"{m_comb*LHV:.2f}", f"{Q_cedido_HX:.2f}", f"{Q_PS_cedido_714:.2f}", f"{Q_cedido_E3:.2f}", f"{Q_cedido_E1:.2f}"],
-            "Q Ganado [kW]": [f"{Q_caldera:.2f}", f"{Q_ganado_HX:.2f}", f"{m_botellas_kgs*cp_prom_prod*(T_botella_714_OUT-T_botella_16_OUT):.2f}", "---", "---"]
-        }
-        st.table(tabla_q)
-
-        st.subheader("Resumen de Flujos")
+        st.subheader("Resumen de Flujos Masicos")
         tabla_f = {
-            "Fluido": ["Combustible", "Vapor de Agua", "Agua Proceso (Total)", "Producto (Cerveza+Vidrio)", "Agua Mezcla E3"],
-            "Valor [kg/s]": [f"{m_comb:.4f}", f"{m_I_steam_IN:.4f}", f"{m_I_water_OUT:.4f}", f"{m_botellas_kgs:.4f}", f"{m_PS_16_1520:.4f}"]
+            "Corriente": ["Combustible (LHV)", "Vapor de Agua (Generado)", "Vapor en Intercambiador", "Agua Proceso (Total)", "Masa de Producto", "Agua Mezcla Etapa 3"],
+            "Valor [kg/s]": [f"{m_comb:.4f}", f"{m_vapor_gen:.4f}", f"{m_I_steam_IN:.4f}", f"{m_I_water_OUT:.4f}", f"{m_botellas_kgs:.4f}", f"{m_PS_16_1520:.4f}"]
         }
         st.table(tabla_f)
+
+        st.subheader("Monitoreo de Temperaturas")
+        tabla_t = {
+            "Punto de Medicion": ["Entrada Agua Caldera", "Salida Vapor Caldera", "Vapor Entrada HX", "Agua Proceso Entrada HX", "Agua Proceso Salida HX", "Producto Entrada (E1)", "Producto Salida Final"],
+            "Temperatura [C]": [f"{T_b_in:.1f}", f"{T_b_out:.1f}", f"{T_I_steam_IN:.1f}", f"{T_I_water_IN:.1f}", f"{T_I_water_OUT:.1f}", f"{T_botella_IN:.1f}", f"{T_botella_1520_OUT:.1f}"]
+        }
+        st.table(tabla_t)
 
     with col_s:
         st.subheader("Resultados Principales")
@@ -118,11 +109,11 @@ try:
         cp_w_hx = cp_f(69, 80)
         eff_hx = Q_ganado_HX / (m_I_water_OUT * cp_w_hx * (T_I_steam_IN - T_I_water_IN))
         st.metric("Eficiencia HX", f"{eff_hx*100:.2f} %")
+        st.metric("Flujo Combustible", f"{m_comb:.4f} kg/s")
         
         st.divider()
         st.write(f"**U Seleccionada:** {U_manual} W/m2-K")
         st.write(f"**Numero de Placas:** {int(N_placas)}")
-        st.write(f"**Masa por botella:** {m_una_botella:.3f} kg")
         st.write(f"**Cp Promedio Producto:** {cp_prom_prod:.3f} kJ/kg-K")
 
 except Exception as e:
