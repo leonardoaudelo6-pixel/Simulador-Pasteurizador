@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 
 # --- CONFIGURACION DE PAGINA ---
-st.set_page_config(page_title="Simulador Tecnico v4.1", layout="wide")
+st.set_page_config(page_title="Monitor Tecnico de Pasteurizacion", layout="wide")
 
 # --- FUNCIONES DE PROPIEDADES ---
 def h_liq(T_c, P_kpa):
@@ -19,11 +19,11 @@ def cp_f(T_c, P_kpa):
 # --- BARRA LATERAL: INPUTS ---
 st.sidebar.title("Parametros de Ingenieria")
 
-# 1. UNICO INPUT DE MANTENIMIENTO
+# Sección de Mantenimiento (Unico Input)
 with st.sidebar.expander("1. MANTENIMIENTO", expanded=True):
     t_dias = st.number_input("Dias sin limpiar", value=0, min_value=0)
 
-# RESTO DE INPUTS (CALDERA, HX, PRODUCTO)
+# Resto de parámetros técnicos
 with st.sidebar.expander("2. CALDERA", expanded=False):
     m_b_in = st.number_input("Flujo Alimentacion [kg/s]", value=1.472, format="%.3f")
     n_b = st.number_input("Eficiencia Caldera", value=0.96)
@@ -45,14 +45,12 @@ with st.sidebar.expander("4. PRODUCTO Y PROCESO", expanded=False):
     T_botella_714_OUT = st.number_input("T Salida Etapa 2 [C]", value=64.0)
     T_botella_16_OUT = st.number_input("T Salida Etapa 1 [C]", value=40.0)
 
-# --- CALCULOS (LOGICA ASINTOTICA) ---
+# --- CALCULOS ---
 try:
-    # Parametros fijos de ensuciamiento (internos)
-    R_f_max = 0.0005
-    beta_f = 0.06
-    U_ideal = 2850.0 # W/m2-K
+    # Parametros de ensuciamiento internos
+    R_f_max, beta_f, U_ideal = 0.0005, 0.06, 2850.0
 
-    # Balances Ideales
+    # Balances
     H_b_in, H_b_out = h_liq(T_b_in, P_b_out), h_vap(T_b_out, 1)
     Q_b_water = m_b_in * (H_b_out - H_b_in)
     m_comb = Q_b_water / (n_b * LHV)
@@ -69,14 +67,14 @@ try:
     NTU_ideal = -np.log(1 - E_ideal)
     Area_fisica = (NTU_ideal * C_min) / (U_ideal / 1000)
 
-    # Calculo Real (Ensuciamiento)
+    # Ensuciamiento Real
     R_f = R_f_max * (1 - np.exp(-beta_f * t_dias))
     U_real = 1 / ((1 / U_ideal) + R_f)
     NTU_real = (U_real / 1000 * Area_fisica) / C_min
     E_real = 1 - np.exp(-NTU_real)
     Q_HX_real = E_real * Q_max
 
-    # Produccion Real
+    # Produccion
     m_una_botella = m_vidrio + m_cerveza
     cp_prom_prod = (m_vidrio * 0.86 + m_cerveza * 3.85) / m_una_botella
     m_I_water_real = Q_HX_real / (h_liq(T_I_water_OUT, 80.0) - h_liq(T_I_water_IN, 80.0))
@@ -85,37 +83,45 @@ try:
     m_botellas_real = (Q_PS_cedido_714_real * eficiencia_past) / (cp_prom_prod * (T_botella_714_OUT - T_botella_16_OUT))
     produccion_dia = (m_botellas_real * 3600 * 24) / m_una_botella
 
-    # --- PANTALLA PRINCIPAL ---
-    st.title("Resultados de Operacion y Mantenimiento")
+    # --- PANTALLA PRINCIPAL (DISEÑO ORIGINAL RE-ESTABLECIDO) ---
+    st.title("Monitor de Planta: Analisis de Operacion")
     st.divider()
 
-    col_info, col_res = st.columns([1.5, 1])
+    col_img, col_res = st.columns([2, 1])
 
-    with col_info:
+    with col_img:
+        try:
+            st.image("diagrama.png", use_container_width=True)
+        except:
+            st.warning("Diagrama no encontrado.")
+        
         st.subheader("Balances de Energia [kW]")
         st.table({
             "Componente": ["Caldera (Combustible)", "Intercambiador (Vapor)", "Intercambiador (Agua)", "Pasteurizador (Cedido)"],
             "Valor Real": [f"{m_comb*LHV:.2f}", f"{Q_HX_real:.2f}", f"{Q_HX_real:.2f}", f"{Q_PS_cedido_714_real:.2f}"]
         })
-        
-        st.subheader("Analisis de Eficiencia y Ensuciamiento")
-        st.table({
-            "Parametro": ["U (Coef. Global) [W/m2-K]", "E (Efectividad) [%]"],
-            "Ideal (Dia 0)": [f"{U_ideal:.1f}", f"{E_ideal*100:.2f}%"],
-            "Real (Actual)": [f"{U_real:.1f}", f"{E_real*100:.2f}%"]
-        })
 
     with col_res:
-        st.subheader("Produccion Real")
-        st.metric("Botellas por Dia", f"{int(produccion_dia):,}")
-        st.metric("Masa Pasteurizada", f"{m_botellas_real:.3f} kg/s")
+        st.subheader("Indicadores Principales")
+        st.metric("Produccion Real", f"{int(produccion_dia):,} Bot/Dia")
         
+        # Comparativa U
+        st.write("**Coeficiente Global U [W/m2-K]**")
+        c_u1, c_u2 = st.columns(2)
+        c_u1.metric("Ideal", f"{U_ideal:.0f}")
+        c_u2.metric("Real", f"{U_real:.1f}", delta=f"{U_real - U_ideal:.1f}")
+
+        # Comparativa Eficiencia
+        st.write("**Efectividad del Sistema [%]**")
+        c_e1, c_e2 = st.columns(2)
+        c_e1.metric("Ideal", f"{E_ideal*100:.1f}%")
+        c_e2.metric("Real", f"{E_real*100:.1f}%", delta=f"{(E_real - E_ideal)*100:.1f}%")
+
         st.divider()
-        st.subheader("Indicadores de Diseno")
-        st.write(f"**U Ideal:** {U_ideal} W/m2-K")
-        st.write(f"**U Real:** {U_real:.2f} W/m2-K")
-        st.write(f"**Efectividad Ideal:** {E_ideal*100:.2f}%")
-        st.write(f"**Efectividad Real:** {E_real*100:.2f}%")
+        st.subheader("Mantenimiento")
+        st.write(f"Dias sin limpieza: **{t_dias}**")
+        st.write(f"Resistencia Ensuciamiento: **{R_f:.6f}**")
+        st.write(f"Flujo Agua Proceso: **{m_I_water_real:.4f} kg/s**")
 
 except Exception as e:
     st.error(f"Error en calculos: {e}")
