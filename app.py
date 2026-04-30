@@ -62,36 +62,39 @@ try:
     h_I_w_out = h_liq(T_I_water_OUT, P_I_water)
     m_I_water_total = Q_HX_nominal / (h_I_w_out - h_I_w_in)
     
-    # NTU y U Ideal en kW/m2K
     U_ideal_kW = 2.85 
     C_min = m_I_water_total * cp_f(69.0, P_I_water)
     Q_max = C_min * (T_I_steam_IN - T_I_water_IN)
     E_ideal = Q_HX_nominal / Q_max
     Area_fisica = (-np.log(1 - E_ideal) * C_min) / U_ideal_kW
     
-    # Fouling con escala corregida (Resistencia mucho menor para realismo industrial)
+    # Fouling realista
     R_f_max = 0.00005 
     beta_f = 0.02
     R_f_actual = R_f_max * (1 - np.exp(-beta_f * t_dias))
-    
-    # Calculo de U Real (Unidades coherentes en kW)
-    # R_f esta en (m2-K)/W, convertimos a (m2-K)/kW para la formula de U en kW
-    R_f_kW = R_f_actual / 1000 
     U_real_kW = 1 / ((1 / U_ideal_kW) + (R_f_actual * 1000))
     
     NTU_real = (U_real_kW * Area_fisica) / C_min
     E_real = 1 - np.exp(-NTU_real)
     Q_HX_real = E_real * Q_max
 
-    # 3. Calculo de Produccion
+    # 3. Calculo de Produccion (Ideal vs Real)
     m_una_botella = m_vidrio + m_cerveza
     cp_prod = (m_vidrio * 0.86 + m_cerveza * 3.85) / m_una_botella
-    m_I_water_real = Q_HX_real / (h_I_w_out - h_I_w_in)
-    m_PS_714 = (m_I_water_real / 14) * 8
-    Q_PS_cedido = m_PS_714 * (h_I_w_out - h_liq(T_PS_714_OUT, P_I_water))
+    h_PS_salida_agua = h_liq(T_PS_714_OUT, P_I_water)
     
-    m_botellas_kgs = (Q_PS_cedido * eficiencia_past) / (cp_prod * (T_botella_714_OUT - T_botella_16_OUT))
-    produccion_dia = (m_botellas_kgs * 3600 * 24) / m_una_botella
+    # Produccion Ideal (Dia 0)
+    m_PS_714_ideal = (m_I_water_total / 14) * 8
+    Q_PS_cedido_ideal = m_PS_714_ideal * (h_I_w_out - h_PS_salida_agua)
+    m_bot_kgs_ideal = (Q_PS_cedido_ideal * eficiencia_past) / (cp_prod * (T_botella_714_OUT - T_botella_16_OUT))
+    prod_dia_ideal = (m_bot_kgs_ideal * 3600 * 24) / m_una_botella
+
+    # Produccion Real (Con Fouling)
+    m_I_water_real = Q_HX_real / (h_I_w_out - h_I_w_in)
+    m_PS_714_real = (m_I_water_real / 14) * 8
+    Q_PS_cedido_real = m_PS_714_real * (h_I_w_out - h_PS_salida_agua)
+    m_bot_kgs_real = (Q_PS_cedido_real * eficiencia_past) / (cp_prod * (T_botella_714_OUT - T_botella_16_OUT))
+    prod_dia_real = (m_bot_kgs_real * 3600 * 24) / m_una_botella
 
     # --- INTERFAZ ---
     st.title("Monitor Tecnico de Planta")
@@ -108,14 +111,15 @@ try:
         st.subheader("Balances de Energia")
         df_balances = pd.DataFrame({
             "Sistema": ["Caldera", "Intercambiador", "Pasteurizador"],
-            "Calor Cedido [kW]": [f"{m_comb*LHV:.2f}", f"{Q_HX_real:.2f}", f"{Q_PS_cedido:.2f}"],
-            "Calor Aprovechado [kW]": [f"{Q_caldera_ganado:.2f}", f"{Q_HX_real:.2f}", f"{Q_PS_cedido*eficiencia_past:.2f}"]
+            "Calor Cedido [kW]": [f"{m_comb*LHV:.2f}", f"{Q_HX_real:.2f}", f"{Q_PS_cedido_real:.2f}"],
+            "Calor Aprovechado [kW]": [f"{Q_caldera_ganado:.2f}", f"{Q_HX_real:.2f}", f"{Q_PS_cedido_real*eficiencia_past:.2f}"]
         })
         st.table(df_balances)
 
     with c_right:
         st.subheader("Metricas de Operacion")
-        st.success(f"Produccion Real: {int(produccion_dia):,} Botellas/Dia")
+        st.success(f"Produccion Real: {int(prod_dia_real):,} Botellas/Dia")
+        st.info(f"Produccion Ideal: {int(prod_dia_ideal):,} Botellas/Dia")
         st.metric("Flujo Masico Combustible", f"{m_comb:.4f} kg/s")
         
         st.divider()
