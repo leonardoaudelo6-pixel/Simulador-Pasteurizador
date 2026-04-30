@@ -57,34 +57,38 @@ try:
 
     # 2. Intercambiador y Fouling
     m_I_steam_IN = m_vapor_gen * 0.95
-    Q_HX_nominal = m_I_steam_IN * (h_vap(T_I_steam_IN, 1) - h_liq(82.0, 500.0))
-    m_I_water_total = Q_HX_nominal / (h_liq(T_I_water_OUT, P_I_water) - h_liq(T_I_water_IN, P_I_water))
+    h_s_in = h_vap(T_I_steam_IN, 1)
+    h_cond = h_liq(82.0, 500.0)
+    Q_HX_nominal = m_I_steam_IN * (h_s_in - h_cond)
+    
+    h_I_w_in, h_I_w_out = h_liq(T_I_water_IN, P_I_water), h_liq(T_I_water_OUT, P_I_water)
+    m_I_water_total = Q_HX_nominal / (h_I_w_out - h_I_w_in)
     
     C_min = m_I_water_total * cp_f(69.0, P_I_water)
-    E_ideal = Q_HX_nominal / (C_min * (T_I_steam_IN - T_I_water_IN))
+    Q_max = C_min * (T_I_steam_IN - T_I_water_IN)
+    E_ideal = Q_HX_nominal / Q_max
     Area_fisica = (-np.log(1 - E_ideal) * C_min) / U_ideal_ees
     
     R_f_actual = 0.00005 * (1 - np.exp(-0.02 * t_dias))
     U_real_kW = 1 / ((1 / U_ideal_ees) + (R_f_actual * 1000))
-    E_real = 1 - np.exp(-(U_real_kW * Area_fisica) / C_min)
-    Q_HX_real = E_real * (C_min * (T_I_steam_IN - T_I_water_IN))
+    NTU_real = (U_real_kW * Area_fisica) / C_min
+    E_real = 1 - np.exp(-NTU_real)
+    Q_HX_real = E_real * Q_max
 
     # 3. Balances por Etapa en Pasteurizador
     m_una_botella = m_vidrio + m_cerveza
     cp_prod = (m_vidrio * 0.86 + m_cerveza * 3.85) / m_una_botella
-    m_I_w_real = Q_HX_real / (h_liq(T_I_water_OUT, P_I_water) - h_liq(T_I_water_IN, P_I_water))
+    m_I_w_real = Q_HX_real / (h_I_w_out - h_I_w_in)
 
-    # Etapa 2 (Zona 7-14) - Base para m_botellas
+    # Etapa 2 (Base de calculo)
     m_PS_714 = (m_I_w_real / 14) * 8
-    Q_agua_cedido_E2 = m_PS_714 * (h_liq(T_I_water_OUT, P_I_water) - h_liq(T_PS_714_OUT, P_I_water))
+    Q_agua_cedido_E2 = m_PS_714 * (h_I_w_out - h_liq(T_PS_714_OUT, P_I_water))
     m_botellas_kgs = (Q_agua_cedido_E2 * eficiencia_past) / (cp_prod * (T_botella_714_OUT - T_botella_16_OUT))
     Q_botella_ganado_E2 = m_botellas_kgs * cp_prod * (T_botella_714_OUT - T_botella_16_OUT)
 
-    # Etapa 1 (Pre-calentamiento)
+    # Etapa 1 y 3
     Q_botella_ganado_E1 = m_botellas_kgs * cp_prod * (T_botella_16_OUT - T_botella_IN)
     Q_agua_cedido_E1 = Q_botella_ganado_E1 / eficiencia_past
-
-    # Etapa 3 (Enfriamiento)
     Q_botella_cedido_E3 = m_botellas_kgs * cp_prod * (T_botella_714_OUT - T_botella_1520_OUT)
     Q_agua_ganado_E3 = Q_botella_cedido_E3 * eficiencia_past
 
@@ -111,15 +115,19 @@ try:
         st.table(df_etapas)
 
     with c_right:
-        st.subheader("Indicadores de Operacion")
+        st.subheader("Metricas de Operacion")
         st.success(f"Produccion Real: {int(produccion_dia):,} Botellas/Dia")
         st.metric("Flujo Masico Combustible", f"{m_comb:.4f} kg/s")
         
         st.divider()
-        st.write("Estado del Intercambiador")
+        st.write("Eficiencia del Intercambiador")
         cu1, cu2 = st.columns(2)
         cu1.metric("U Ideal [kW/m2K]", f"{U_ideal_ees:.3f}")
         cu2.metric("U Real [kW/m2K]", f"{U_real_kW:.3f}", delta=f"{U_real_kW - U_ideal_ees:.4f}" if t_dias > 0 else None)
+
+        ce1, ce2 = st.columns(2)
+        ce1.metric("Efectividad Ideal", f"{E_ideal*100:.1f}%")
+        ce2.metric("Efectividad Real", f"{E_real*100:.1f}%", delta=f"{(E_real - E_ideal)*100:.1f}%" if t_dias > 0 else None)
 
         st.divider()
         st.write(f"Tiempo de operacion: {t_dias} dias")
