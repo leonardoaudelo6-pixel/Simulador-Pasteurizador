@@ -31,6 +31,8 @@ with st.sidebar.expander("CALDERA", expanded=True):
     P_b_out = st.number_input("Presion Vapor [kPa]", value=550.0)
 
 with st.sidebar.expander("INTERCAMBIADOR (HX)", expanded=True):
+    # CORRECCION: U Ideal ahora es 1.472 conforme a tu EES
+    U_ideal_ees = st.number_input("U Ideal de Diseño [kW/m2K]", value=1.472, format="%.3f")
     T_I_steam_IN = st.number_input("T Vapor Entrada HX [C]", value=151.0)
     T_I_water_IN = st.number_input("T Agua Entrada HX [C]", value=52.0)
     T_I_water_OUT = st.number_input("T Agua Salida HX [C]", value=86.0)
@@ -62,34 +64,35 @@ try:
     h_I_w_out = h_liq(T_I_water_OUT, P_I_water)
     m_I_water_total = Q_HX_nominal / (h_I_w_out - h_I_w_in)
     
-    U_ideal_kW = 2.85 
+    # NTU y Area fisica usando tu U_ideal de 1.472
     C_min = m_I_water_total * cp_f(69.0, P_I_water)
     Q_max = C_min * (T_I_steam_IN - T_I_water_IN)
     E_ideal = Q_HX_nominal / Q_max
-    Area_fisica = (-np.log(1 - E_ideal) * C_min) / U_ideal_kW
+    Area_fisica = (-np.log(1 - E_ideal) * C_min) / U_ideal_ees
     
     # Fouling realista
     R_f_max = 0.00005 
     beta_f = 0.02
     R_f_actual = R_f_max * (1 - np.exp(-beta_f * t_dias))
-    U_real_kW = 1 / ((1 / U_ideal_kW) + (R_f_actual * 1000))
     
+    # U real corregida
+    U_real_kW = 1 / ((1 / U_ideal_ees) + (R_f_actual * 1000))
     NTU_real = (U_real_kW * Area_fisica) / C_min
     E_real = 1 - np.exp(-NTU_real)
     Q_HX_real = E_real * Q_max
 
-    # 3. Calculo de Produccion (Ideal vs Real)
+    # 3. Produccion (Ideal vs Real)
     m_una_botella = m_vidrio + m_cerveza
     cp_prod = (m_vidrio * 0.86 + m_cerveza * 3.85) / m_una_botella
     h_PS_salida_agua = h_liq(T_PS_714_OUT, P_I_water)
     
-    # Produccion Ideal (Dia 0)
+    # Produccion Ideal
     m_PS_714_ideal = (m_I_water_total / 14) * 8
     Q_PS_cedido_ideal = m_PS_714_ideal * (h_I_w_out - h_PS_salida_agua)
     m_bot_kgs_ideal = (Q_PS_cedido_ideal * eficiencia_past) / (cp_prod * (T_botella_714_OUT - T_botella_16_OUT))
     prod_dia_ideal = (m_bot_kgs_ideal * 3600 * 24) / m_una_botella
 
-    # Produccion Real (Con Fouling)
+    # Produccion Real
     m_I_water_real = Q_HX_real / (h_I_w_out - h_I_w_in)
     m_PS_714_real = (m_I_water_real / 14) * 8
     Q_PS_cedido_real = m_PS_714_real * (h_I_w_out - h_PS_salida_agua)
@@ -125,8 +128,8 @@ try:
         st.divider()
         st.write("Eficiencia del Intercambiador")
         cu1, cu2 = st.columns(2)
-        cu1.metric("U Ideal [kW/m2K]", f"{U_ideal_kW:.3f}")
-        cu2.metric("U Real [kW/m2K]", f"{U_real_kW:.3f}", delta=f"{U_real_kW - U_ideal_kW:.4f}" if t_dias > 0 else None)
+        cu1.metric("U Ideal [kW/m2K]", f"{U_ideal_ees:.3f}")
+        cu2.metric("U Real [kW/m2K]", f"{U_real_kW:.3f}", delta=f"{U_real_kW - U_ideal_ees:.4f}" if t_dias > 0 else None)
 
         ce1, ce2 = st.columns(2)
         ce1.metric("Efectividad Ideal", f"{E_ideal*100:.1f}%")
