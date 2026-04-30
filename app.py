@@ -128,4 +128,4 @@ try:
         st.write(f"Dias de operacion continua: **{t_dias}**")
 
 except Exception as e:
-    st.error(f"Error en calculos: {e}")v
+    st.error(f"Error en calculos: {e}")
