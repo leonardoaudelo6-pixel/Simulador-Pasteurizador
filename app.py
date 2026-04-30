@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 # --- CONFIGURACION DE PAGINA ---
-st.set_page_config(page_title="Analisis Termico Pro", layout="wide")
+st.set_page_config(page_title="Monitor Tecnico de Pasteurizacion", layout="wide")
 
 # --- FUNCIONES DE PROPIEDADES ---
 def h_liq(T_c, P_kpa):
@@ -16,7 +16,7 @@ def h_vap(T_c, Q):
 def cp_f(T_c, P_kpa):
     return PropsSI('C', 'T', T_c + 273.15, 'P', P_kpa * 1000, 'Water') / 1000
 
-# --- BARRA LATERAL: INPUTS TOTALES ---
+# --- BARRA LATERAL: INPUTS ---
 st.sidebar.title("Panel de Control")
 
 with st.sidebar.expander("MANTENIMIENTO", expanded=True):
@@ -36,52 +36,62 @@ with st.sidebar.expander("INTERCAMBIADOR (HX)", expanded=True):
     T_I_water_OUT = st.number_input("T Agua Salida [C]", value=86.0)
     P_I_water = st.number_input("Presion Agua Proceso [kPa]", value=80.0)
 
-with st.sidebar.expander("PASTEURIZADOR", expanded=False):
+with st.sidebar.expander("PASTEURIZADOR", expanded=True):
     eficiencia_past = st.number_input("Eficiencia Proceso", value=0.95)
     T_botella_714_OUT = st.number_input("T Salida Etapa 2 [C]", value=64.0)
     T_botella_16_OUT = st.number_input("T Salida Etapa 1 [C]", value=40.0)
+    T_botella_IN = 4.0
 
 # --- CALCULOS ---
 try:
     # 1. Caldera y Combustible
-    H_b_in, H_b_out = h_liq(T_b_in, P_b_out), h_vap(T_b_out, 1)
-    Q_caldera = m_vapor_gen * (H_b_out - H_b_in)
-    m_comb = Q_caldera / (n_b * LHV)
+    H_b_in = h_liq(T_b_in, P_b_out)
+    H_b_out = h_vap(T_b_out, 1)
+    Q_caldera_ganado = m_vapor_gen * (H_b_out - H_b_in)
+    m_comb = Q_caldera_ganado / (n_b * LHV)
 
-    # 2. HX e Idealidad
+    # 2. Intercambiador y Ensuciamiento
     m_I_steam_IN = m_vapor_gen * 0.95
-    h_s_in, h_cond = h_vap(T_I_steam_IN, 1), h_liq(82.0, 500.0)
+    h_s_in = h_vap(T_I_steam_IN, 1)
+    h_cond = h_liq(82.0, 500.0)
     Q_HX_nominal = m_I_steam_IN * (h_s_in - h_cond)
     
-    h_I_w_in, h_I_w_out = h_liq(T_I_water_IN, P_I_water), h_liq(T_I_water_OUT, P_I_water)
-    m_I_water = Q_HX_nominal / (h_I_w_out - h_I_w_in)
+    h_I_w_in = h_liq(T_I_water_IN, P_I_water)
+    h_I_w_out = h_liq(T_I_water_OUT, P_I_water)
+    m_I_water_total = Q_HX_nominal / (h_I_w_out - h_I_w_in)
     
-    C_min = m_I_water * cp_f(69.0, P_I_water)
-    Q_max = C_min * (T_I_steam_IN - T_I_water_IN)
-    
-    # 3. Ensuciamiento y U en kW/m2K
+    # NTU y U en kW/m2K
     U_ideal_kW = 2.85 
-    Area_fisica = (-np.log(1 - (Q_HX_nominal/Q_max)) * C_min) / U_ideal_kW
+    C_min = m_I_water_total * cp_f(69.0, P_I_water)
+    Q_max = C_min * (T_I_steam_IN - T_I_water_IN)
+    E_ideal = Q_HX_nominal / Q_max
+    Area_fisica = (-np.log(1 - E_ideal) * C_min) / U_ideal_kW
+    
+    # Efecto real del tiempo
     R_f_actual = (0.0005 * (1 - np.exp(-0.06 * t_dias)))
     U_real_kW = 1 / ((1 / U_ideal_kW) + (R_f_actual * 1000))
-    
-    # Recalculo de Eficiencia Real
     NTU_real = (U_real_kW * Area_fisica) / C_min
     E_real = 1 - np.exp(-NTU_real)
     Q_HX_real = E_real * Q_max
 
-    # 4. Produccion
-    m_una_botella = 1.55 
-    cp_prod = (0.35 * 0.86 + 1.2 * 3.85) / 1.55
-    Q_util = ( (Q_HX_real/14)*8 ) * (h_I_w_out - h_liq(58.2, P_I_water)) * eficiencia_past
-    m_botellas = Q_util / (cp_prod * (T_botella_714_OUT - T_botella_16_OUT))
-    produccion_dia = (m_botellas * 3600 * 24) / m_una_botella
+    # 3. Produccion (Calculo Maestro)
+    m_una_botella = 1.55 # kg
+    cp_prod = (0.35 * 0.86 + 1.2 * 3.85) / m_una_botella
+    
+    # Flujo de agua efectivo en zona de pasteurización (8/14 del total)
+    m_I_water_real = Q_HX_real / (h_I_w_out - h_I_w_in)
+    m_PS_714 = (m_I_water_real / 14) * 8
+    Q_PS_cedido = m_PS_714 * (h_I_w_out - h_liq(58.2, P_I_water))
+    
+    # Masa de botellas despejada del balance de energía
+    m_botellas_kgs = (Q_PS_cedido * eficiencia_past) / (cp_prod * (T_botella_714_OUT - T_botella_16_OUT))
+    produccion_dia = (m_botellas_kgs * 3600 * 24) / m_una_botella
 
     # --- INTERFAZ ---
-    st.title("Monitor Tecnico de Planta: Eficiencia y Calor")
+    st.title("Monitor Tecnico de Planta")
     st.divider()
 
-    c_left, c_right = st.columns([1.5, 1])
+    c_left, c_right = st.columns([1.8, 1.2])
 
     with c_left:
         try:
@@ -89,39 +99,33 @@ try:
         except:
             st.warning("Diagrama no encontrado.")
 
-        st.subheader("Balances de Calor del Sistema")
-        # Tabla de Balances clara
+        st.subheader("Balances de Energia del Sistema")
+        # Tabla de Balances clara e industrial
         df_balances = pd.DataFrame({
-            "Sistema": ["Caldera", "Intercambiador", "Pasteurizador"],
-            "Fuente Energia": ["Combustible", "Vapor de Agua", "Agua de Proceso"],
-            "Calor Cedido [kW]": [f"{m_comb*LHV:.2f}", f"{Q_HX_real:.2f}", f"{Q_HX_real*0.95:.2f}"],
-            "Calor Ganado [kW]": [f"{Q_caldera:.2f}", f"{Q_HX_real:.2f}", f"{Q_util:.2f}"]
+            "Sistema": ["Caldera (Combustible)", "Intercambiador (Vapor)", "Pasteurizador (Agua)"],
+            "Calor Cedido [kW]": [f"{m_comb*LHV:.2f}", f"{Q_HX_real:.2f}", f"{Q_PS_cedido:.2f}"],
+            "Calor Aprovechado [kW]": [f"{Q_caldera_ganado:.2f}", f"{Q_HX_real:.2f}", f"{Q_PS_cedido*eficiencia_past:.2f}"]
         })
         st.table(df_balances)
 
     with c_right:
-        st.subheader("Metricas de Operacion")
-        st.metric("Produccion Real", f"{int(produccion_dia):,} Bot/Dia")
+        st.subheader("Metricas Clave")
+        st.success(f"**Produccion Real:** {int(produccion_dia):,} Botellas/Dia")
         st.metric("Flujo Combustible", f"{m_comb:.4f} kg/s")
         
-        st.write("**Coeficiente Global U [kW/(m2·K)]**")
+        st.divider()
+        st.write("**Eficiencia del Intercambiador**")
         cu1, cu2 = st.columns(2)
-        cu1.metric("U Ideal", f"{U_ideal_kW:.3f}")
-        cu2.metric("U Real", f"{U_real_kW:.3f}", delta=f"{U_real_kW - U_ideal_kW:.3f}")
+        cu1.metric("U Ideal [kW/m2K]", f"{U_ideal_kW:.3f}")
+        cu2.metric("U Real [kW/m2K]", f"{U_real_kW:.3f}", delta=f"{U_real_kW - U_ideal_kW:.3f}")
 
-        # GRAFICO DE SENSIBILIDAD CORREGIDO
-        st.subheader("Sensibilidad: Eficiencia vs T_vapor")
-        t_range = np.linspace(T_I_water_OUT + 2, T_I_steam_IN + 20, 50)
-        q_max_range = C_min * (t_range - T_I_water_IN)
-        e_range = Q_HX_real / q_max_range
-        
-        chart_data = pd.DataFrame({
-            "Temperatura Vapor [C]": t_range,
-            "Efectividad": e_range
-        }).set_index("Temperatura Vapor [C]")
-        
-        st.line_chart(chart_data)
-        st.info(f"Punto actual: {T_I_steam_IN} C | E: {E_real*100:.1f}%")
+        ce1, ce2 = st.columns(2)
+        ce1.metric("Efectividad Ideal", f"{E_ideal*100:.1f}%")
+        ce2.metric("Efectividad Real", f"{E_real*100:.1f}%", delta=f"{(E_real - E_ideal)*100:.1f}%")
+
+        st.divider()
+        st.info(f"Masa de producto en proceso: {m_botellas_kgs:.4f} kg/s")
+        st.write(f"Dias de operacion continua: **{t_dias}**")
 
 except Exception as e:
-    st.error(f"Error en calculos: {e}")
+    st.error(f"Error en calculos: {e}")v
