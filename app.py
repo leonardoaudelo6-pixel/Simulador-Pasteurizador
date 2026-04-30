@@ -69,14 +69,15 @@ try:
     E_ideal = Q_HX_nominal / Q_max
     Area_fisica = (-np.log(1 - E_ideal) * C_min) / U_ideal_kW
     
-    # Fouling corregido
-    R_f_max = 0.0005 
-    beta_f = 0.06
-    R_f_actual_W = R_f_max * (1 - np.exp(-beta_f * t_dias))
+    # Fouling con escala corregida (Resistencia mucho menor para realismo industrial)
+    R_f_max = 0.00005 
+    beta_f = 0.02
+    R_f_actual = R_f_max * (1 - np.exp(-beta_f * t_dias))
     
-    U_ideal_W = U_ideal_kW * 1000
-    U_real_W = 1 / ((1 / U_ideal_W) + R_f_actual_W)
-    U_real_kW = U_real_W / 1000
+    # Calculo de U Real (Unidades coherentes en kW)
+    # R_f esta en (m2-K)/W, convertimos a (m2-K)/kW para la formula de U en kW
+    R_f_kW = R_f_actual / 1000 
+    U_real_kW = 1 / ((1 / U_ideal_kW) + (R_f_actual * 1000))
     
     NTU_real = (U_real_kW * Area_fisica) / C_min
     E_real = 1 - np.exp(-NTU_real)
@@ -102,7 +103,7 @@ try:
         try:
             st.image("diagrama.png", use_container_width=True)
         except:
-            st.warning("Diagrama tecnico no detectado en el directorio.")
+            st.warning("Diagrama tecnico no detectado.")
 
         st.subheader("Balances de Energia")
         df_balances = pd.DataFrame({
